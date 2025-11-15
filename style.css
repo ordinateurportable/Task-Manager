@@ -1,0 +1,21 @@
+@import "tailwind.css";
+
+.priority-low {
+    color: green;
+    padding: 5px;
+}
+
+.priority-medium {
+    color: orange;
+    padding: 5px;
+}
+
+.priority-high {
+    color: red;
+    padding: 5px;
+}
+
+.checked {
+    text-decoration: line-through;
+    color: gray;
+}

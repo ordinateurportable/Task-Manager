@@ -9,23 +9,121 @@ const priorityTranslations = {
     'high': 'Высокий'
 };
 
+// Глобальные функции-обработчики
+function handleTaskActions(e) {
+    if (!e.target.matches(".is-done, .delete-button, .edit-button")) return;
+    
+    const taskElement = e.target.closest(".task-item");
+    if (!taskElement) return;
+    
+    const taskId = taskElement.id;
+    
+    //получение данных
+    const users = JSON.parse(localStorage.getItem("users")) || [];
+    const currentUser = localStorage.getItem("currentUser");
+    const user = users.find(u => u.userName === currentUser);
+    
+    if (!user || !user.tasks) {
+        console.error("User or tasks not found");
+        return;
+    }
+    
+    const task = user.tasks.find(t => t.id === taskId);
+    if (!task) {
+        console.error("Task not found");
+        return;
+    }
+
+    if (e.target.matches(".is-done")) {
+        task.checked = task.checked === "notChecked" ? "checked" : "notChecked";
+        localStorage.setItem("users", JSON.stringify(users));
+        displayTasks(user.tasks);
+        
+    } else if (e.target.matches(".delete-button")) {
+        user.tasks = user.tasks.filter(t => t.id !== taskId);
+        localStorage.setItem("users", JSON.stringify(users));
+        displayTasks(user.tasks);
+        
+    } else if (e.target.matches(".edit-button")) {
+        const newName = prompt("Введите новый текст задачи:", task.taskName);
+        if (newName && newName.trim() !== '') {
+            task.taskName = newName.trim();
+            localStorage.setItem("users", JSON.stringify(users));
+            displayTasks(user.tasks);
+        }
+    }
+}
+
+function handleLogout() {
+    localStorage.removeItem("currentUser");
+    location.reload(); 
+}
+
+function handleAddTask(e) {
+    e.preventDefault();
+    
+    const taskInput = document.querySelector('#task-text');
+    const taskText = taskInput.value.trim();
+    const priorityLevel = document.querySelector('#priority-level').value;
+    const currentUser = localStorage.getItem("currentUser");
+    
+    if (!taskText || !currentUser) {
+        if (!taskText) {
+            taskInput.focus();
+            alert("Введите текст задачи");
+        }
+        return;
+    }
+    
+    const users = JSON.parse(localStorage.getItem("users"));
+    const userIndex = users.findIndex(user => user.userName === currentUser);
+    
+    if (userIndex !== -1) {
+        const newTask = {
+            id: generateUniqueId(),
+            taskName: taskText,
+            taskPriority: priorityLevel,
+            checked: "notChecked",
+        };
+        
+        //проверка на наличие tasks и создание если нет
+        if (!users[userIndex].tasks) {
+            users[userIndex].tasks = [];
+        }
+        
+        users[userIndex].tasks.push(newTask);
+        localStorage.setItem("users", JSON.stringify(users));
+        
+        taskInput.value = '';
+        displayTasks(users[userIndex].tasks);
+    }
+}
+
+function generateUniqueId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
 function displayTasks(tasks) {
     const tasksContainer = document.getElementById('tasks-container');
-
+    if (!tasksContainer) {
+        console.error('tasks-container not found');
+        return;
+    }
+        const safeTasks = Array.isArray(tasks) ? tasks : [];
     
-    if (tasks.length === 0) {
+    if (safeTasks.length === 0) {
         tasksContainer.innerHTML = '<p>Нет задач</p>';
         return;
     }
     
-    const tasksMarkup = tasks.map((task) => `
+    const tasksMarkup = safeTasks.map((task) => `
         <div class="task-item flex justify-between items-center p-3 w-full bg-gray-50 rounded-lg mb-2 shadow-sm" id="${task.id}">
             <span class="priority-${task.taskPriority.toLowerCase()} ${task.checked}">${task.taskName}</span>
             <div class="flex gap-2 items-center text-lg">
                 <span class="text-xs">
                 ${priorityTranslations[task.taskPriority.toLowerCase()] || task.taskPriority} приоритет
                 </span>
-                <input type="checkbox" class="is-done cursor-pointer" id="is-done-checkbox" ${task.checked}>
+                <input type="checkbox" class="is-done cursor-pointer" ${task.checked === "checked" ? 'checked' : ''}>
                 <button class="edit-button cursor-pointer">✏️</button>
                 <button class="delete-button cursor-pointer">🗑️</button>
             </div>
@@ -33,10 +131,14 @@ function displayTasks(tasks) {
     `).join('');
     
     tasksContainer.innerHTML = tasksMarkup;
-
 }
 
 function showMainInterface(userName) {
+    const oldMainContent = document.getElementById('main-content');
+    if (oldMainContent) {
+        oldMainContent.remove();
+    }
+    
     const mainMarkup = `<div id="main-content">
         <div id="header" class="flex justify-between items-center max-[490px]:w-full w-[490px]">
             <h2 class="text-lg font-semibold">Привет, ${userName}!</h2>
@@ -57,30 +159,31 @@ function showMainInterface(userName) {
             <p>Нет задач</p>
             </div>
         </div>
-`;
+    `;
     
     authSection.classList.add("hidden");
     wrapper.insertAdjacentHTML("afterbegin", mainMarkup);
     
-    document.getElementById('task-form').addEventListener('submit', addTask);
-    
-    document.getElementById('exit-button').addEventListener('click', logout);
+    document.getElementById('task-form').addEventListener('submit', handleAddTask);
+    document.getElementById('exit-button').addEventListener('click', handleLogout);
+    document.getElementById('tasks-container').addEventListener('click', handleTaskActions);
 
-    const users = JSON.parse(localStorage.getItem("users"));
+    const users = JSON.parse(localStorage.getItem("users")) || [];
     const user = users.find(u => u.userName === userName);
     if (user) {
+        user.tasks = user.tasks || [];
         displayTasks(user.tasks);
     }
 }
 
+// Обработчик формы авторизации
 authForm.addEventListener("submit", (e) => {
     e.preventDefault(); 
     
     const userName = authFormName.value.trim();
 
     if(userName === "") {
-        // authFormName.classList.add("border-red-500")
-        alert("Введите имя пользователя.")
+        alert("Введите имя пользователя.");
         return;
     }
     
@@ -89,7 +192,6 @@ authForm.addEventListener("submit", (e) => {
         
         const existingUserIndex = existingUsers.findIndex(user => user.userName === userName);
 
-        
         if (existingUserIndex === -1) {
             const newUser = {
                 userName: userName,
@@ -98,160 +200,17 @@ authForm.addEventListener("submit", (e) => {
             existingUsers.push(newUser);
         }
         localStorage.setItem("users", JSON.stringify(existingUsers));
-        
         localStorage.setItem("currentUser", userName);
-        
-        console.log(userName); 
         
         showMainInterface(userName);
     }
 });
 
-
-function addTask(e) {
-    e.preventDefault();
-    
-    const taskText = document.querySelector('#task-text').value.trim();
-    const priorityLevel = document.querySelector('#priority-level').value;
-    const currentUser = localStorage.getItem("currentUser");
-    
-    if (taskText && currentUser) {
-        const users = JSON.parse(localStorage.getItem("users"));
-        const userIndex = users.findIndex(user => user.userName === currentUser);
-        
-        function generateUniqueId() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
-        }
-        
-        if (userIndex !== -1) {
-            const newTask = {
-                id: generateUniqueId(),
-                taskName: taskText,
-                taskPriority: priorityLevel,
-                checked: "notChecked",
-            };
-            
-            users[userIndex].tasks.push(newTask);
-            localStorage.setItem("users", JSON.stringify(users));
-            
-            document.getElementById('task-text').value = '';
-            
-            displayTasks(users[userIndex].tasks);
-        }
-    }
-}
-
-function logout() {
-    localStorage.removeItem("currentUser");
-    location.reload(); 
-}
-
+// Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', () => {
     const currentUser = localStorage.getItem("currentUser");
     
     if (currentUser) {
         showMainInterface(currentUser);
-
-        const users = JSON.parse(localStorage.getItem("users"));
-        const user = users.find(u => u.userName === currentUser);
-        if (user) {
-            const tasksContainer = document.getElementById('tasks-container');
-
-
-            tasksContainer.addEventListener("click", (e) => {
-                if(e.target.matches(".delete-button")) {
-
-                    console.log("clicked")
-                    console.log("Task id:", e.target.parentElement.id)
-                    console.log("Tasks array before deletion:",user.tasks)
-
-                    const taskId = e.target.parentElement.parentElement.id;
-
-                    const taskInd = user.tasks.findIndex(task => task.id === taskId);
-                    console.log("TaskInd:", taskInd)
-
-                    user.tasks.splice(taskInd, 1) 
-
-                    console.log("Tasks array after deletion:", user.tasks)
-                    localStorage.setItem("users", JSON.stringify(users));
-                    displayTasks(user.tasks);
-                    
-                    console.log(localStorage.getItem("users"))
-
-                    e.target.parentElement.parentElement.remove();
-
-
-                }
-            })
-
-            tasksContainer.addEventListener("click", (e) => {
-                if(e.target.matches(".edit-button")) {
-
-                    console.log("clicked")
-                    console.log("Parent element:", e.target.parentElement.parentElement)
-                    console.log("Task id:", e.target.parentElement.parentElement.id)
-
-                    const taskId = e.target.parentElement.parentElement.id;
-
-                    const task = user.tasks.find(task => task.id === taskId)
-                    console.log(task)
-
-                    const newName = prompt("Введите новый текст задачи:", task.taskName)
-
-                    if(newName !== null && newName.trim() !== '') {
-                        task.taskName = newName.trim();
-                        console.log(task.taskName);
-                        console.log(users);
-                        localStorage.setItem("users", JSON.stringify(users));
-                        // location.reload();
-                        displayTasks(user.tasks); 
-                    }
-                    
-                    console.log(localStorage.getItem("users"))
-
-
-                }
-            })
-
-            tasksContainer.addEventListener("click", (e) => {
-                if(e.target.matches(".is-done")) {
-
-                    console.log("clicked")
-                    console.log("Parent element:", e.target.parentElement.parentElement)
-                    console.log("Task id:", e.target.parentElement.parentElement.id)
-
-                    const taskId = e.target.parentElement.parentElement.id;
-
-                    const task = user.tasks.find(task => task.id === taskId)
-                    console.log(task)
-
-                   if(task.checked === "notChecked") {
-                    task.checked = "checked"; 
-
-                    localStorage.setItem("users", JSON.stringify(users));
-                    // location.reload();
-                    displayTasks(user.tasks); 
-                   } else {
-                    task.checked = "notChecked"; 
-
-                    localStorage.setItem("users", JSON.stringify(users));
-                    // location.reload();
-                    displayTasks(user.tasks);
-                    
-                   }
-
-                    // if(newName !== null && newName.trim() !== '') {
-                    //     task.taskName = newName.trim();
-                    //     console.log(task.taskName);
-                    //     console.log(users);
-                    //     localStorage.setItem("users", JSON.stringify(users));
-                    //     location.reload();
-                    // }
-                    
-                    console.log(localStorage.getItem("users"))
-                }
-            })
-
-        }
     }
 });
